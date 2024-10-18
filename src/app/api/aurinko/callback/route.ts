@@ -7,7 +7,7 @@ import {waitUntil} from "@vercel/functions"
 import { NextResponse,NextRequest} from "next/server";
 
 export const GET=async (req:NextRequest)=>{
-const {userId}=await auth();
+const {userId}= auth();
 if(!userId)
   return NextResponse.json({
 message:"unathorized"},
@@ -35,7 +35,8 @@ if(!token)return NextResponse.json({
 {
 status:400
 })
-const accountDetails=await getAccountDetails(token.accessToken);
+const accountDetails=await getAccountDetails(token.accessToken)
+
 await db.account.upsert({
   where:{
     id:token.accountId.toString()

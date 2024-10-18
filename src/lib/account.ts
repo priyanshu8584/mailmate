@@ -1,96 +1,112 @@
-import axios, { all } from "axios";
+import axios from "axios";
 import { EmailMessage, SyncResponse, SyncUpdatedResponse } from "./types";
 import { headers } from "next/headers";
 import { error } from "console";
-export class Account{
-  private token:string;
+export class Account {
+  private token: string;
 
-  constructor(token:string)
-  {
-    this.token=token
+  constructor(token: string) {
+    this.token = token;
   }
-  private async startSync(){
-    const response=await axios.post<SyncResponse>('https://api.aurinko.io/v1/email/sync',{},{
-      headers:{
-        Authorization:`Bearer ${this.token}`
+
+  private async startSync() {
+    const response = await axios.post<SyncResponse>('https://api.aurinko.io/v1/email/sync', {}, {
+      headers: {
+        Authorization: `Bearer ${this.token}`
       },
-      params:{
-        daysWithin:2,
-        bodyType:'html'
-    }
-  })
+      params: {
+        daysWithin: 2,
+        bodyType: 'html'
+      }
+    });
+    console.log(this.token);
+    console.log("Start sync function:", response.data);
     return response.data;
   }
-//for gettinng new mails which come after syncing
-  async getUpdatedEmails({deltaToken,pageToken}:{deltaToken?:string,pageToken?:string})
-  
+
+  // For getting new mails that come after syncing
+  async getUpdatedEmails({ deltaToken,pageToken }: { deltaToken?: string ,pageToken?:string}) {
+    const params: Record<string, string> = {};
+    if (deltaToken ) {
+      params.deltaToken = deltaToken;
+    }
+  if(pageToken)
   {
-       let params:Record<string,string>={}
-       if(deltaToken)params.deltaToken=deltaToken
-       if(pageToken)params.pageToken=pageToken
-
-       const response=await axios.get<SyncUpdatedResponse>(`https://api.aurinko.io/v1/email/sync/updated`,{
-        headers:{
-          Authorization:`Bearer ${this.token}`
-        },
-        params
-
-       })
-       return response.data
+    params.pageToken=pageToken;
   }
-  //for getting already present emails
-  async performInitalSync(){
-    try{
-   let SyncResponse=await this.startSync();
-   console.log(SyncResponse)
-   while(!SyncResponse.ready)
-   {
-    await new Promise(resolve=>setTimeout(resolve,1000))
-    SyncResponse=await this.startSync();
-   }
- let storedDeltaToken:string=SyncResponse.syncUpdatedToken;
- //the inital delta token present sent to aurinko to get the new updated token and passing through the updated mails to laod new mails
- let updatedResposne=await this.getUpdatedEmails({deltaToken:storedDeltaToken});
- console.log(updatedResposne)
-   if(updatedResposne.nextDeltaToken)
-   {
+    const response = await axios.get('https://api.aurinko.io/v1/email/sync/updated', {
+      params,
+      headers: { Authorization: `Bearer ${this.token}`,
     
-    storedDeltaToken=updatedResposne.nextDeltaToken
-   }
-   let allEmails:EmailMessage[]=updatedResposne.records
+     },
+     
+    });
 
-   while(updatedResposne.nextPageToken)
-   {
-    updatedResposne=await this.getUpdatedEmails({pageToken:updatedResposne.nextPageToken})
-    if(updatedResposne.nextDeltaToken)
-    {
-      storedDeltaToken=updatedResposne.nextDeltaToken
-    }
-   }
-   console.log('initial sync has completed',allEmails.length,'emails')
-   await this.getUpdatedEmails({deltaToken:storedDeltaToken})
-   return {
-    emails:allEmails,
-    deltaTokn:storedDeltaToken
-   }
-    }
-    catch (e) {
+    console.log("Delta Token:", deltaToken);
+     console.log("Page Token:", pageToken);
+    console.log("Get updated email function:", response.data);
+    return response.data;
+  }
+
+  // For getting already present emails
+  async performInitalSync() {
+    try {
+      let syncResponse = await this.startSync();
+      console.log("Initial Sync Response:", syncResponse);
+
+      // Wait until sync is ready
+      while (!syncResponse.ready) {
+        console.log("Sync not ready, retrying in 1 second...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        syncResponse = await this.startSync();
+        console.log("Rechecking sync status:", syncResponse);
+      }
+
+      let storedDeltaToken: string = syncResponse.syncUpdatedToken;
+      console.log("Stored Delta Token:", storedDeltaToken);
+
+      // Initial get updated emails with the delta token
+      let updatedResponse = await this.getUpdatedEmails({ deltaToken: storedDeltaToken });
+      console.log("Updated Response:", updatedResponse);
+
+      // Update stored delta token if a new one is returned
+      if (updatedResponse.nextDeltaToken) {
+        storedDeltaToken = updatedResponse.nextDeltaToken;
+      }
+
+      let allEmails = updatedResponse.records;
+      console.log("Emails Retrieved:", allEmails.length);
+
+      // Continue fetching emails if there's a next page token
+      while (updatedResponse.nextPageToken) {
+        updatedResponse = await this.getUpdatedEmails({ pageToken: updatedResponse.nextPageToken });
+        if (updatedResponse.nextDeltaToken) {
+          storedDeltaToken = updatedResponse.nextDeltaToken;
+        }
+        allEmails.push(...updatedResponse.records);  // Append new emails to the list
+      }
+
+      console.log('Initial sync completed with', allEmails.length, 'emails');
+      await this.getUpdatedEmails({ deltaToken: storedDeltaToken });
+
+      return {
+        emails: allEmails,
+        deltaToken: storedDeltaToken,
+      };
+    } catch (e) {
       if (axios.isAxiosError(e)) {
-        // Log the error details for Axios errors
         console.error('Axios error during sync:', {
-          message: e.message, // Error message
-          code: e.code, // Axios error code (if any)
+          message: e.message,
+          code: e.code,
           response: e.response ? {
-            status: e.response.status, // HTTP status code
-            headers: e.response.headers, // Response headers
-            data: e.response.data // Response data (if any)
-          } : 'No response'})
-        // Handle non-Axios errors
-        
-      }
-      else{
-        console.error('no axios Error during sync:', e);
+            status: e.response.status,
+            headers: e.response.headers,
+            data: e.response.data
+          } : 'No response'
+        });
+      } else {
+        console.error('Non-Axios Error during sync:', e);
       }
     }
-}
+  }
 }

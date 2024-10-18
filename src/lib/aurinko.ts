@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server"
 import axios from "axios"
 export const getAurinkoAuthUrl=async(serviceType:'Google'|'Office365')=>{
-const {userId}=await auth();
+const {userId}=auth();
 if(!userId)
   throw new Error("unathorized");
 
